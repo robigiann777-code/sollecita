@@ -36,13 +36,17 @@ export function InvoiceDetailDrawer({
     msg: string;
   } | null>(null);
 
-  // Invia DAVVERO l'email del passo indicato e, se va a buon fine, la registra.
-  async function inviaEmail(inv: Invoice, step: ReminderStep) {
+  // Invia DAVVERO un sollecito via email o PEC e, se va a buon fine, lo registra.
+  async function inviaCanale(
+    inv: Invoice,
+    step: ReminderStep,
+    canale: "email" | "pec",
+  ) {
     if (!inv.clientEmail) {
       setFeedback({
         stepKey: step.key,
         ok: false,
-        msg: "Questo cliente non ha un indirizzo email.",
+        msg: "Questo cliente non ha un indirizzo a cui scrivere.",
       });
       return;
     }
@@ -50,24 +54,28 @@ export function InvoiceDetailDrawer({
     setFeedback(null);
     const subject = fillTemplate(templates[step.key].subject, inv, company);
     const text = fillTemplate(templates[step.key].body, inv, company);
+    const endpoint = canale === "pec" ? "/api/send-pec" : "/api/send-email";
     try {
-      const res = await fetch("/api/send-email", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           to: inv.clientEmail,
           subject,
           text,
-          replyTo: company.email || undefined,
+          ...(canale === "email" ? { replyTo: company.email || undefined } : {}),
         }),
       });
       const data = await res.json();
       if (data.ok) {
-        await sendStep(inv.id, step.key, ["email"]);
+        await sendStep(inv.id, step.key, [canale]);
         setFeedback({
           stepKey: step.key,
           ok: true,
-          msg: `Email inviata a ${inv.clientEmail}.`,
+          msg:
+            canale === "pec"
+              ? `PEC inviata a ${inv.clientEmail}.`
+              : `Email inviata a ${inv.clientEmail}.`,
         });
       } else {
         setFeedback({
@@ -266,11 +274,20 @@ export function InvoiceDetailDrawer({
               <div className="mt-3 flex flex-wrap gap-2">
                 {nextStep.channels.includes("email") && invoice.clientEmail && (
                   <button
-                    onClick={() => inviaEmail(invoice, nextStep)}
+                    onClick={() => inviaCanale(invoice, nextStep, "email")}
                     disabled={sendingKey === nextStep.key}
                     className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-60"
                   >
                     {sendingKey === nextStep.key ? "Invio in corso…" : "Invia email"}
+                  </button>
+                )}
+                {nextStep.channels.includes("pec") && invoice.clientEmail && (
+                  <button
+                    onClick={() => inviaCanale(invoice, nextStep, "pec")}
+                    disabled={sendingKey === nextStep.key}
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+                  >
+                    {sendingKey === nextStep.key ? "Invio in corso…" : "Invia PEC"}
                   </button>
                 )}
                 <button
@@ -360,11 +377,23 @@ export function InvoiceDetailDrawer({
                       !stopped &&
                       !isNext && (
                         <button
-                          onClick={() => inviaEmail(invoice, step)}
+                          onClick={() => inviaCanale(invoice, step, "email")}
                           disabled={sendingKey === step.key}
                           className="text-xs font-semibold text-brand hover:underline disabled:opacity-60"
                         >
                           {sendingKey === step.key ? "Invio…" : "Invia email"}
+                        </button>
+                      )}
+                    {step.channels.includes("pec") &&
+                      invoice.clientEmail &&
+                      !stopped &&
+                      !isNext && (
+                        <button
+                          onClick={() => inviaCanale(invoice, step, "pec")}
+                          disabled={sendingKey === step.key}
+                          className="text-xs font-semibold text-indigo-600 hover:underline disabled:opacity-60"
+                        >
+                          {sendingKey === step.key ? "Invio…" : "Invia PEC"}
                         </button>
                       )}
                     {!sent && !stopped && !isNext && (
