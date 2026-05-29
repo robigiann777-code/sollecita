@@ -1,12 +1,13 @@
 "use client";
 
 import { useInvoices } from "@/lib/store";
+import { useSettings } from "@/lib/settings";
+import { fillTemplate } from "@/lib/templates";
 import type { Invoice } from "@/lib/types";
 import {
   REMINDER_LADDER,
   SAFETY_RULES,
   CHANNEL_LABEL,
-  buildMessage,
   computeStatus,
   getNextDueStep,
   getStepDate,
@@ -22,8 +23,9 @@ export function InvoiceDetailDrawer({
   invoice: Invoice | null;
   onClose: () => void;
 }) {
-  const { markPaid, markUnpaid, toggleSuspend, sendStep, deleteInvoice } =
+  const { markPaid, markUnpaid, toggleSuspend, sendStep, deleteInvoice, updateInvoice } =
     useInvoices();
+  const { company, templates } = useSettings();
 
   if (!invoice) return null;
 
@@ -114,6 +116,47 @@ export function InvoiceDetailDrawer({
             </div>
           )}
 
+          {/* Promessa di pagamento */}
+          {!invoice.paidAt && (
+            <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                Promessa di pagamento
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Il cliente ha detto che paga entro una certa data? Segnala qui:
+                la fattura resterà in evidenza fino a quel giorno.
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input
+                  type="date"
+                  value={invoice.promisedDate ?? ""}
+                  onChange={(e) =>
+                    updateInvoice(invoice.id, {
+                      promisedDate: e.target.value || null,
+                    })
+                  }
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-brand focus:outline-none"
+                />
+                {invoice.promisedDate && (
+                  <button
+                    onClick={() =>
+                      updateInvoice(invoice.id, { promisedDate: null })
+                    }
+                    className="text-xs font-semibold text-slate-500 hover:text-red-600"
+                  >
+                    Rimuovi
+                  </button>
+                )}
+              </div>
+              {invoice.promisedDate && (
+                <p className="mt-2 text-xs font-semibold text-indigo-600">
+                  Pagamento promesso entro il{" "}
+                  {formatDate(invoice.promisedDate)}.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Prossima azione consigliata */}
           {nextStep && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
@@ -175,9 +218,26 @@ export function InvoiceDetailDrawer({
                       ? `Inviato il ${formatDateTime(sentLogs[0].sentAt)}`
                       : `Previsto per il ${formatDate(plannedDate.toISOString())}`}
                   </div>
-                  <p className="mt-2 whitespace-pre-line rounded-lg bg-slate-100 p-3 text-xs text-slate-600">
-                    {buildMessage(invoice, step)}
+                  <p className="mt-2 text-xs font-semibold text-slate-500">
+                    Oggetto:{" "}
+                    {fillTemplate(templates[step.key].subject, invoice, company)}
                   </p>
+                  <p className="mt-1 whitespace-pre-line rounded-lg bg-slate-100 p-3 text-xs text-slate-600">
+                    {fillTemplate(templates[step.key].body, invoice, company)}
+                  </p>
+                  <button
+                    onClick={() => {
+                      const txt = fillTemplate(
+                        templates[step.key].body,
+                        invoice,
+                        company,
+                      );
+                      navigator.clipboard?.writeText(txt);
+                    }}
+                    className="mt-2 text-xs font-semibold text-slate-500 hover:text-brand"
+                  >
+                    Copia testo
+                  </button>
                   {!sent && !stopped && !isNext && (
                     <button
                       onClick={() => sendStep(invoice.id, step.key)}

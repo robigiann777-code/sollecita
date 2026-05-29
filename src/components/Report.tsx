@@ -36,6 +36,7 @@ export function Report() {
     let giorniIncassoTot = 0;
     let giorniIncassoN = 0;
     const debitori = new Map<string, number>();
+    const aging = { f0_30: 0, f31_60: 0, f61_90: 0, f90: 0 };
 
     for (const inv of invoices) {
       solleciti += inv.reminders.length;
@@ -58,6 +59,11 @@ export function Report() {
             inv.clientName,
             (debitori.get(inv.clientName) ?? 0) + inv.amount,
           );
+          const ritardo = daysBetween(new Date(inv.dueDate), today);
+          if (ritardo <= 30) aging.f0_30 += inv.amount;
+          else if (ritardo <= 60) aging.f31_60 += inv.amount;
+          else if (ritardo <= 90) aging.f61_90 += inv.amount;
+          else aging.f90 += inv.amount;
         }
       }
     }
@@ -80,6 +86,7 @@ export function Report() {
       tempoMedio,
       tassoIncasso,
       peggiori,
+      aging,
     };
   }, [invoices]);
 
@@ -131,6 +138,28 @@ export function Report() {
             <Kpi
               label="Clienti morosi"
               value={String(stats.peggiori.length)}
+            />
+          </div>
+
+          <h2 className="mb-3 mt-8 text-lg font-bold text-slate-800">
+            Scaduto per fasce di ritardo
+          </h2>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <Kpi label="0–30 giorni" value={formatEuro(stats.aging.f0_30)} />
+            <Kpi
+              label="31–60 giorni"
+              value={formatEuro(stats.aging.f31_60)}
+              accent="text-amber-600"
+            />
+            <Kpi
+              label="61–90 giorni"
+              value={formatEuro(stats.aging.f61_90)}
+              accent="text-orange-600"
+            />
+            <Kpi
+              label="Oltre 90 giorni"
+              value={formatEuro(stats.aging.f90)}
+              accent="text-red-600"
             />
           </div>
 

@@ -33,9 +33,20 @@ export interface Invoice {
   dueDate: string; // ISO date (yyyy-mm-dd)
   paidAt: string | null; // ISO datetime, null = non pagata
   suspended: boolean;
+  promisedDate?: string | null; // ISO date: il cliente ha promesso di pagare entro questa data
   notes?: string;
   reminders: ReminderLog[];
   createdAt: string; // ISO datetime
+}
+
+// Profilo dell'azienda che usa Sollecita: compare nei messaggi e nell'estratto conto.
+export interface CompanyProfile {
+  name: string;
+  vat: string; // P.IVA / C.F.
+  address: string;
+  email: string;
+  phone: string;
+  iban: string;
 }
 
 // Stato calcolato della fattura, usato per badge e filtri.
