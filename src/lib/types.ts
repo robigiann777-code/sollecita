@@ -1,9 +1,16 @@
-export type ReminderChannel = "email" | "sms" | "pec" | "posta" | "avvocato";
+export type ReminderChannel =
+  | "email"
+  | "sms"
+  | "chiamata"
+  | "pec"
+  | "posta"
+  | "avvocato";
 
 export type ReminderStepKey =
   | "promemoria"
   | "sollecito_1"
   | "sollecito_2"
+  | "telefonata"
   | "messa_in_mora"
   | "raccomandata"
   | "avvocato";

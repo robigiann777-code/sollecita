@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useInvoices } from "@/lib/store";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 import { computeStatus, getNextDueStep } from "@/lib/reminders";
@@ -8,6 +9,7 @@ import { formatDate, formatEuro } from "@/lib/format";
 import { StatsBar } from "./StatsBar";
 import { StatusBadge } from "./StatusBadge";
 import { AddInvoiceDialog } from "./AddInvoiceDialog";
+import { ImportDialog } from "./ImportDialog";
 import { InvoiceDetailDrawer } from "./InvoiceDetailDrawer";
 
 type Filter = "tutte" | "scaduta" | "in_scadenza" | "in_regola" | "pagata";
@@ -25,6 +27,7 @@ export function Dashboard() {
   const [filter, setFilter] = useState<Filter>("tutte");
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const selected = invoices.find((i) => i.id === selectedId) ?? null;
@@ -66,12 +69,32 @@ export function Dashboard() {
               </div>
             </div>
           </div>
-          <button
-            onClick={() => setDialogOpen(true)}
-            className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
-          >
-            + Nuova fattura
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/report"
+              className="hidden rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 sm:inline-block"
+            >
+              Report
+            </Link>
+            <Link
+              href="/prezzi"
+              className="hidden rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 sm:inline-block"
+            >
+              Prezzi
+            </Link>
+            <button
+              onClick={() => setImportOpen(true)}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              Importa
+            </button>
+            <button
+              onClick={() => setDialogOpen(true)}
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
+            >
+              + Nuova fattura
+            </button>
+          </div>
         </div>
       </header>
 
@@ -157,6 +180,7 @@ export function Dashboard() {
       </main>
 
       <AddInvoiceDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
+      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} />
       <InvoiceDetailDrawer
         invoice={selected}
         onClose={() => setSelectedId(null)}

@@ -51,8 +51,18 @@ export const REMINDER_LADDER: ReminderStep[] = [
     subject: "Secondo sollecito — fattura {numero} ancora non pagata",
   },
   {
-    key: "messa_in_mora",
+    key: "telefonata",
     order: 4,
+    label: "Contatto telefonico",
+    offsetDays: 15,
+    channels: ["chiamata"],
+    tone: "Diretto ma cortese",
+    optional: false,
+    subject: "Telefonata di sollecito — fattura {numero}",
+  },
+  {
+    key: "messa_in_mora",
+    order: 5,
     label: "Messa in mora",
     offsetDays: 30,
     channels: ["pec"],
@@ -62,7 +72,7 @@ export const REMINDER_LADDER: ReminderStep[] = [
   },
   {
     key: "raccomandata",
-    order: 5,
+    order: 6,
     label: "Raccomandata A/R",
     offsetDays: 45,
     channels: ["posta"],
@@ -72,7 +82,7 @@ export const REMINDER_LADDER: ReminderStep[] = [
   },
   {
     key: "avvocato",
-    order: 6,
+    order: 7,
     label: "Passaggio all'avvocato",
     offsetDays: 60,
     channels: ["avvocato"],
@@ -93,6 +103,7 @@ export const SAFETY_RULES = {
 export const CHANNEL_LABEL: Record<ReminderChannel, string> = {
   email: "Email",
   sms: "SMS",
+  chiamata: "Chiamata",
   pec: "PEC",
   posta: "Posta A/R",
   avvocato: "Avvocato",
@@ -159,6 +170,8 @@ export function buildMessage(invoice: Invoice, step: ReminderStep): string {
       return `Gentile ${cliente},\nla fattura ${numero} di ${importo}, con scadenza ${scadenza}, risulta ancora non pagata. La preghiamo di provvedere al saldo al piu' presto. Se ha gia' pagato, ignori questo messaggio.`;
     case "sollecito_2":
       return `Gentile ${cliente},\nnonostante i precedenti solleciti, la fattura ${numero} di ${importo} (scaduta il ${scadenza}) risulta non pagata. La invitiamo al saldo immediato; in mancanza saranno applicati gli interessi di mora previsti dalla legge.`;
+    case "telefonata":
+      return `Traccia per la telefonata a ${cliente} (numero ${invoice.clientPhone ?? "—"}):\n"Buongiorno, la chiamo per la fattura ${numero} di ${importo}, scaduta il ${scadenza}. Possiamo concordare oggi una data per il pagamento?" Mantenere un tono cortese, negli orari consentiti, e annotare l'esito.`;
     case "messa_in_mora":
       return `Egregio ${cliente},\ncon la presente, avente valore di formale messa in mora, la diffidiamo al pagamento della fattura ${numero} di ${importo}, scaduta il ${scadenza}, entro 7 giorni dal ricevimento. In difetto adiremo le vie legali per il recupero del credito, oltre interessi e spese.`;
     case "raccomandata":

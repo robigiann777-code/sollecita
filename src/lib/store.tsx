@@ -23,6 +23,7 @@ interface InvoicesContextValue {
   invoices: Invoice[];
   loaded: boolean;
   addInvoice: (input: NewInvoiceInput) => void;
+  addManyInvoices: (inputs: NewInvoiceInput[]) => void;
   updateInvoice: (id: string, patch: Partial<Invoice>) => void;
   deleteInvoice: (id: string) => void;
   markPaid: (id: string) => void;
@@ -80,6 +81,19 @@ export function InvoicesProvider({ children }: { children: React.ReactNode }) {
       createdAt: new Date().toISOString(),
     };
     setInvoices((prev) => [invoice, ...prev]);
+  }, []);
+
+  const addManyInvoices = useCallback((inputs: NewInvoiceInput[]) => {
+    const now = new Date().toISOString();
+    const newInvoices: Invoice[] = inputs.map((input) => ({
+      ...input,
+      id: uid(),
+      paidAt: null,
+      suspended: false,
+      reminders: [],
+      createdAt: now,
+    }));
+    setInvoices((prev) => [...newInvoices, ...prev]);
   }, []);
 
   const updateInvoice = useCallback((id: string, patch: Partial<Invoice>) => {
@@ -145,6 +159,7 @@ export function InvoicesProvider({ children }: { children: React.ReactNode }) {
       invoices,
       loaded,
       addInvoice,
+      addManyInvoices,
       updateInvoice,
       deleteInvoice,
       markPaid,
@@ -157,6 +172,7 @@ export function InvoicesProvider({ children }: { children: React.ReactNode }) {
       invoices,
       loaded,
       addInvoice,
+      addManyInvoices,
       updateInvoice,
       deleteInvoice,
       markPaid,
