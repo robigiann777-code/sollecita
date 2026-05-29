@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { useInvoices } from "@/lib/store";
 import { useSettings } from "@/lib/settings";
 import { fillTemplate } from "@/lib/templates";
+import { calcolaInteressiMora } from "@/lib/interessi";
 import type { Invoice } from "@/lib/types";
 import {
   REMINDER_LADDER,
@@ -12,6 +14,7 @@ import {
   getNextDueStep,
   getStepDate,
   isStepSent,
+  type ReminderStep,
 } from "@/lib/reminders";
 import { formatDate, formatDateTime, formatEuro } from "@/lib/format";
 import { StatusBadge } from "./StatusBadge";
@@ -26,12 +29,70 @@ export function InvoiceDetailDrawer({
   const { markPaid, markUnpaid, toggleSuspend, sendStep, deleteInvoice, updateInvoice } =
     useInvoices();
   const { company, templates } = useSettings();
+  const [sendingKey, setSendingKey] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{
+    stepKey: string;
+    ok: boolean;
+    msg: string;
+  } | null>(null);
+
+  // Invia DAVVERO l'email del passo indicato e, se va a buon fine, la registra.
+  async function inviaEmail(inv: Invoice, step: ReminderStep) {
+    if (!inv.clientEmail) {
+      setFeedback({
+        stepKey: step.key,
+        ok: false,
+        msg: "Questo cliente non ha un indirizzo email.",
+      });
+      return;
+    }
+    setSendingKey(step.key);
+    setFeedback(null);
+    const subject = fillTemplate(templates[step.key].subject, inv, company);
+    const text = fillTemplate(templates[step.key].body, inv, company);
+    try {
+      const res = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: inv.clientEmail,
+          subject,
+          text,
+          replyTo: company.email || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        await sendStep(inv.id, step.key, ["email"]);
+        setFeedback({
+          stepKey: step.key,
+          ok: true,
+          msg: `Email inviata a ${inv.clientEmail}.`,
+        });
+      } else {
+        setFeedback({
+          stepKey: step.key,
+          ok: false,
+          msg: data.message || "Invio non riuscito.",
+        });
+      }
+    } catch {
+      setFeedback({
+        stepKey: step.key,
+        ok: false,
+        msg: "Errore di rete: riprova tra poco.",
+      });
+    } finally {
+      setSendingKey(null);
+    }
+  }
 
   if (!invoice) return null;
 
   const status = computeStatus(invoice);
   const nextStep = getNextDueStep(invoice);
   const stopped = Boolean(invoice.paidAt) || invoice.suspended;
+  const mora = calcolaInteressiMora(invoice);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -157,6 +218,41 @@ export function InvoiceDetailDrawer({
             </div>
           )}
 
+          {/* Interessi di mora (D.lgs 231/2002) */}
+          {mora.giorni > 0 && (
+            <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                Interessi di mora (indicativi)
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <div className="text-lg font-extrabold text-slate-900">
+                    {mora.giorni}
+                  </div>
+                  <div className="text-[11px] text-slate-500">giorni di ritardo</div>
+                </div>
+                <div>
+                  <div className="text-lg font-extrabold text-red-600">
+                    {formatEuro(mora.interessi)}
+                  </div>
+                  <div className="text-[11px] text-slate-500">interessi</div>
+                </div>
+                <div>
+                  <div className="text-lg font-extrabold text-slate-900">
+                    {formatEuro(mora.totaleDovuto)}
+                  </div>
+                  <div className="text-[11px] text-slate-500">totale dovuto</div>
+                </div>
+              </div>
+              <p className="mt-2 text-[11px] text-slate-400">
+                Calcolo indicativo secondo il D.lgs. 231/2002 (tasso BCE{" "}
+                {(mora.tassoAnnuo - 8).toFixed(2)}% + 8 punti ={" "}
+                {mora.tassoAnnuo.toFixed(2)}%). Verifica il saggio ufficiale del
+                semestre prima di usarlo in un atto legale.
+              </p>
+            </div>
+          )}
+
           {/* Prossima azione consigliata */}
           {nextStep && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
@@ -167,12 +263,32 @@ export function InvoiceDetailDrawer({
                 {nextStep.order}. {nextStep.label} ·{" "}
                 {nextStep.channels.map((c) => CHANNEL_LABEL[c]).join(" + ")}
               </div>
-              <button
-                onClick={() => sendStep(invoice.id, nextStep.key)}
-                className="mt-3 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
-              >
-                Invia {nextStep.label.toLowerCase()}
-              </button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {nextStep.channels.includes("email") && invoice.clientEmail && (
+                  <button
+                    onClick={() => inviaEmail(invoice, nextStep)}
+                    disabled={sendingKey === nextStep.key}
+                    className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-60"
+                  >
+                    {sendingKey === nextStep.key ? "Invio in corso…" : "Invia email"}
+                  </button>
+                )}
+                <button
+                  onClick={() => sendStep(invoice.id, nextStep.key)}
+                  className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  Segna come inviato
+                </button>
+              </div>
+              {feedback?.stepKey === nextStep.key && (
+                <p
+                  className={`mt-2 text-xs font-semibold ${
+                    feedback.ok ? "text-emerald-600" : "text-red-600"
+                  }`}
+                >
+                  {feedback.msg}
+                </p>
+              )}
             </div>
           )}
 
@@ -225,26 +341,49 @@ export function InvoiceDetailDrawer({
                   <p className="mt-1 whitespace-pre-line rounded-lg bg-slate-100 p-3 text-xs text-slate-600">
                     {fillTemplate(templates[step.key].body, invoice, company)}
                   </p>
-                  <button
-                    onClick={() => {
-                      const txt = fillTemplate(
-                        templates[step.key].body,
-                        invoice,
-                        company,
-                      );
-                      navigator.clipboard?.writeText(txt);
-                    }}
-                    className="mt-2 text-xs font-semibold text-slate-500 hover:text-brand"
-                  >
-                    Copia testo
-                  </button>
-                  {!sent && !stopped && !isNext && (
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
                     <button
-                      onClick={() => sendStep(invoice.id, step.key)}
-                      className="mt-2 text-xs font-semibold text-brand hover:underline"
+                      onClick={() => {
+                        const txt = fillTemplate(
+                          templates[step.key].body,
+                          invoice,
+                          company,
+                        );
+                        navigator.clipboard?.writeText(txt);
+                      }}
+                      className="text-xs font-semibold text-slate-500 hover:text-brand"
                     >
-                      Invia in anticipo
+                      Copia testo
                     </button>
+                    {step.channels.includes("email") &&
+                      invoice.clientEmail &&
+                      !stopped &&
+                      !isNext && (
+                        <button
+                          onClick={() => inviaEmail(invoice, step)}
+                          disabled={sendingKey === step.key}
+                          className="text-xs font-semibold text-brand hover:underline disabled:opacity-60"
+                        >
+                          {sendingKey === step.key ? "Invio…" : "Invia email"}
+                        </button>
+                      )}
+                    {!sent && !stopped && !isNext && (
+                      <button
+                        onClick={() => sendStep(invoice.id, step.key)}
+                        className="text-xs font-semibold text-slate-500 hover:underline"
+                      >
+                        Segna come inviato
+                      </button>
+                    )}
+                  </div>
+                  {feedback?.stepKey === step.key && !isNext && (
+                    <p
+                      className={`mt-2 text-xs font-semibold ${
+                        feedback.ok ? "text-emerald-600" : "text-red-600"
+                      }`}
+                    >
+                      {feedback.msg}
+                    </p>
                   )}
                 </li>
               );

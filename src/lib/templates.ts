@@ -1,4 +1,5 @@
 import { formatDate, formatEuro, daysBetween } from "./format";
+import { calcolaInteressiMora } from "./interessi";
 import type { CompanyProfile, Invoice, ReminderStepKey } from "./types";
 
 export interface MessageTemplate {
@@ -18,6 +19,8 @@ export const PLACEHOLDERS: { token: string; description: string }[] = [
   { token: "{telefono}", description: "Telefono del cliente" },
   { token: "{azienda}", description: "Nome della tua azienda" },
   { token: "{iban}", description: "Il tuo IBAN per il bonifico" },
+  { token: "{interessi}", description: "Interessi di mora maturati (indicativo)" },
+  { token: "{totale_dovuto}", description: "Capitale + interessi di mora" },
 ];
 
 // Modelli predefiniti: sempre fermi ma corretti, mai minacciosi.
@@ -40,7 +43,7 @@ export const DEFAULT_TEMPLATES: TemplateMap = {
   },
   messa_in_mora: {
     subject: "Diffida e messa in mora — fattura {numero}",
-    body: "Egregio {cliente},\ncon la presente, avente valore di formale messa in mora, la diffidiamo al pagamento della fattura {numero} di {importo}, scaduta il {scadenza}, entro 7 giorni dal ricevimento. In difetto adiremo le vie legali per il recupero del credito, oltre interessi e spese.\n{azienda}",
+    body: "Egregio {cliente},\ncon la presente, avente valore di formale messa in mora, la diffidiamo al pagamento della fattura {numero} di {importo}, scaduta il {scadenza} ({giorni_ritardo} giorni di ritardo), entro 7 giorni dal ricevimento.\nAlla data odierna risultano maturati interessi di mora per {interessi} (D.lgs. 231/2002), per un totale dovuto di {totale_dovuto}.\nIn difetto adiremo le vie legali per il recupero del credito, oltre ulteriori interessi e spese.\n{azienda}",
   },
   raccomandata: {
     subject: "Raccomandata A/R — fattura {numero}",
@@ -64,6 +67,7 @@ export function fillTemplate(
   invoice: Invoice,
   company: CompanyProfile,
 ): string {
+  const mora = calcolaInteressiMora(invoice);
   const map: Record<string, string> = {
     "{cliente}": invoice.clientName,
     "{numero}": invoice.number,
@@ -73,6 +77,8 @@ export function fillTemplate(
     "{telefono}": invoice.clientPhone ?? "—",
     "{azienda}": company.name || "La nostra azienda",
     "{iban}": company.iban || "—",
+    "{interessi}": formatEuro(mora.interessi),
+    "{totale_dovuto}": formatEuro(mora.totaleDovuto),
   };
   let out = text;
   for (const [token, value] of Object.entries(map)) {

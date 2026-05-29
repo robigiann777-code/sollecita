@@ -34,7 +34,7 @@ interface InvoicesContextValue {
   markPaid: (id: string) => void;
   markUnpaid: (id: string) => void;
   toggleSuspend: (id: string) => void;
-  sendStep: (id: string, stepKey: string) => void;
+  sendStep: (id: string, stepKey: string, onlyChannels?: string[]) => void;
   resetDemoData: () => void;
 }
 
@@ -252,11 +252,15 @@ export function InvoicesProvider({ children }: { children: React.ReactNode }) {
   );
 
   const sendStep = useCallback(
-    async (id: string, stepKey: string) => {
+    async (id: string, stepKey: string, onlyChannels?: string[]) => {
       if (!user) return;
       const step = REMINDER_LADDER.find((s) => s.key === stepKey);
       if (!step) return;
-      const rows = step.channels.map((channel) => ({
+      const channels =
+        onlyChannels && onlyChannels.length
+          ? step.channels.filter((c) => onlyChannels.includes(c))
+          : step.channels;
+      const rows = channels.map((channel) => ({
         invoice_id: id,
         user_id: user.id,
         step_key: step.key,
