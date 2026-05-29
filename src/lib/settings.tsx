@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { CompanyProfile, ReminderStepKey } from "./types";
@@ -14,8 +15,8 @@ import {
   type MessageTemplate,
   type TemplateMap,
 } from "./templates";
-
-const STORAGE_KEY = "sollecita.settings.v1";
+import { getSupabaseClient } from "./supabase/client";
+import { useAuth } from "./auth";
 
 const DEFAULT_COMPANY: CompanyProfile = {
   name: "",
@@ -25,11 +26,6 @@ const DEFAULT_COMPANY: CompanyProfile = {
   phone: "",
   iban: "",
 };
-
-interface SettingsState {
-  company: CompanyProfile;
-  templates: TemplateMap;
-}
 
 interface SettingsContextValue {
   company: CompanyProfile;
@@ -42,73 +38,95 @@ interface SettingsContextValue {
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
 
-function buildDefaults(): SettingsState {
-  return {
-    company: { ...DEFAULT_COMPANY },
-    templates: structuredCloneSafe(DEFAULT_TEMPLATES),
-  };
-}
-
-function structuredCloneSafe<T>(obj: T): T {
+function clone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj)) as T;
 }
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
+  const { user, loading: authLoading } = useAuth();
   const [company, setCompany] = useState<CompanyProfile>(DEFAULT_COMPANY);
   const [templates, setTemplates] = useState<TemplateMap>(() =>
-    structuredCloneSafe(DEFAULT_TEMPLATES),
+    clone(DEFAULT_TEMPLATES),
   );
   const [loaded, setLoaded] = useState(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Carica il profilo dell'utente.
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw) as Partial<SettingsState>;
-        setCompany({ ...DEFAULT_COMPANY, ...(saved.company ?? {}) });
-        // Uniamo ai default cosi' eventuali nuovi step hanno sempre un modello.
-        setTemplates({
-          ...structuredCloneSafe(DEFAULT_TEMPLATES),
-          ...(saved.templates ?? {}),
-        });
+    if (authLoading) return;
+    let active = true;
+    (async () => {
+      if (!user) {
+        setCompany(DEFAULT_COMPANY);
+        setTemplates(clone(DEFAULT_TEMPLATES));
+        setLoaded(true);
+        return;
       }
-    } catch {
-      const d = buildDefaults();
-      setCompany(d.company);
-      setTemplates(d.templates);
-    }
-    setLoaded(true);
-  }, []);
+      setLoaded(false);
+      const { data } = await getSupabaseClient()
+        .from("profiles")
+        .select("company, templates")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (!active) return;
+      const savedCompany = (data?.company ?? {}) as Partial<CompanyProfile>;
+      const savedTemplates = (data?.templates ?? {}) as Partial<TemplateMap>;
+      setCompany({ ...DEFAULT_COMPANY, ...savedCompany });
+      setTemplates({ ...clone(DEFAULT_TEMPLATES), ...savedTemplates });
+      setLoaded(true);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [authLoading, user]);
 
-  useEffect(() => {
-    if (!loaded) return;
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ company, templates } satisfies SettingsState),
-      );
-    } catch {
-      // spazio pieno o modalita' privata: resta in memoria
-    }
-  }, [company, templates, loaded]);
+  // Salva su Supabase (con piccolo ritardo per non scrivere a ogni tasto).
+  const scheduleSave = useCallback(
+    (nextCompany: CompanyProfile, nextTemplates: TemplateMap) => {
+      if (!user) return;
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        getSupabaseClient()
+          .from("profiles")
+          .upsert({
+            id: user.id,
+            company: nextCompany,
+            templates: nextTemplates,
+            updated_at: new Date().toISOString(),
+          })
+          .then(() => {});
+      }, 600);
+    },
+    [user],
+  );
 
-  const updateCompany = useCallback((patch: Partial<CompanyProfile>) => {
-    setCompany((prev) => ({ ...prev, ...patch }));
-  }, []);
+  const updateCompany = useCallback(
+    (patch: Partial<CompanyProfile>) => {
+      setCompany((prev) => {
+        const next = { ...prev, ...patch };
+        scheduleSave(next, templates);
+        return next;
+      });
+    },
+    [scheduleSave, templates],
+  );
 
   const updateTemplate = useCallback(
     (key: ReminderStepKey, patch: Partial<MessageTemplate>) => {
-      setTemplates((prev) => ({
-        ...prev,
-        [key]: { ...prev[key], ...patch },
-      }));
+      setTemplates((prev) => {
+        const next = { ...prev, [key]: { ...prev[key], ...patch } };
+        scheduleSave(company, next);
+        return next;
+      });
     },
-    [],
+    [scheduleSave, company],
   );
 
   const resetTemplates = useCallback(() => {
-    setTemplates(structuredCloneSafe(DEFAULT_TEMPLATES));
-  }, []);
+    const next = clone(DEFAULT_TEMPLATES);
+    setTemplates(next);
+    scheduleSave(company, next);
+  }, [scheduleSave, company]);
 
   const value = useMemo<SettingsContextValue>(
     () => ({

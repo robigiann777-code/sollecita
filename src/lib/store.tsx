@@ -8,11 +8,16 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { Invoice, ReminderLog } from "./types";
+import type {
+  Invoice,
+  ReminderChannel,
+  ReminderLog,
+  ReminderStepKey,
+} from "./types";
 import { REMINDER_LADDER } from "./reminders";
 import { SAMPLE_INVOICES } from "./sample-data";
-
-const STORAGE_KEY = "sollecita.invoices.v1";
+import { getSupabaseClient } from "./supabase/client";
+import { useAuth } from "./auth";
 
 export type NewInvoiceInput = Omit<
   Invoice,
@@ -35,124 +40,253 @@ interface InvoicesContextValue {
 
 const InvoicesContext = createContext<InvoicesContextValue | null>(null);
 
-function uid(): string {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+// ---- Righe del database (snake_case) ----
+interface InvoiceRow {
+  id: string;
+  user_id: string;
+  client_name: string;
+  client_email: string;
+  client_phone: string | null;
+  number: string;
+  amount: number | string;
+  issue_date: string;
+  due_date: string;
+  paid_at: string | null;
+  suspended: boolean;
+  promised_date: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+interface ReminderRow {
+  id: string;
+  invoice_id: string;
+  user_id: string;
+  step_key: string;
+  channel: string;
+  sent_at: string;
+}
+
+function reminderRowToLog(r: ReminderRow): ReminderLog {
+  return {
+    id: r.id,
+    stepKey: r.step_key as ReminderStepKey,
+    channel: r.channel as ReminderChannel,
+    sentAt: r.sent_at,
+  };
+}
+
+function rowToInvoice(row: InvoiceRow, reminders: ReminderRow[]): Invoice {
+  return {
+    id: row.id,
+    clientName: row.client_name,
+    clientEmail: row.client_email ?? "",
+    clientPhone: row.client_phone ?? undefined,
+    number: row.number,
+    amount: Number(row.amount),
+    issueDate: row.issue_date,
+    dueDate: row.due_date,
+    paidAt: row.paid_at,
+    suspended: row.suspended,
+    promisedDate: row.promised_date,
+    notes: row.notes ?? undefined,
+    reminders: reminders
+      .filter((r) => r.invoice_id === row.id)
+      .map(reminderRowToLog),
+    createdAt: row.created_at,
+  };
+}
+
+function inputToRow(input: NewInvoiceInput, userId: string) {
+  return {
+    user_id: userId,
+    client_name: input.clientName,
+    client_email: input.clientEmail ?? "",
+    client_phone: input.clientPhone ?? null,
+    number: input.number,
+    amount: input.amount,
+    issue_date: input.issueDate,
+    due_date: input.dueDate,
+    notes: input.notes ?? null,
+  };
+}
+
+function patchToRow(patch: Partial<Invoice>): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  if (patch.clientName !== undefined) row.client_name = patch.clientName;
+  if (patch.clientEmail !== undefined) row.client_email = patch.clientEmail;
+  if (patch.clientPhone !== undefined) row.client_phone = patch.clientPhone ?? null;
+  if (patch.number !== undefined) row.number = patch.number;
+  if (patch.amount !== undefined) row.amount = patch.amount;
+  if (patch.issueDate !== undefined) row.issue_date = patch.issueDate;
+  if (patch.dueDate !== undefined) row.due_date = patch.dueDate;
+  if (patch.paidAt !== undefined) row.paid_at = patch.paidAt;
+  if (patch.suspended !== undefined) row.suspended = patch.suspended;
+  if (patch.promisedDate !== undefined)
+    row.promised_date = patch.promisedDate ?? null;
+  if (patch.notes !== undefined) row.notes = patch.notes ?? null;
+  return row;
 }
 
 export function InvoicesProvider({ children }: { children: React.ReactNode }) {
+  const { user, loading: authLoading } = useAuth();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  // Carica dal browser al primo avvio (o semina con dati di esempio).
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        setInvoices(JSON.parse(raw) as Invoice[]);
-      } else {
-        setInvoices(SAMPLE_INVOICES);
-      }
-    } catch {
-      setInvoices(SAMPLE_INVOICES);
+  const reload = useCallback(async () => {
+    if (!user) {
+      setInvoices([]);
+      setLoaded(true);
+      return;
     }
-    setLoaded(true);
-  }, []);
-
-  // Salva nel browser a ogni modifica.
-  useEffect(() => {
-    if (!loaded) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(invoices));
-    } catch {
-      // spazio pieno o modalita' privata: ignoriamo, resta in memoria
+    const supabase = getSupabaseClient();
+    const [{ data: invRows, error: e1 }, { data: remRows, error: e2 }] =
+      await Promise.all([
+        supabase
+          .from("invoices")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        supabase.from("reminders").select("*"),
+      ]);
+    if (e1 || e2) {
+      setLoaded(true);
+      return;
     }
-  }, [invoices, loaded]);
-
-  const addInvoice = useCallback((input: NewInvoiceInput) => {
-    const invoice: Invoice = {
-      ...input,
-      id: uid(),
-      paidAt: null,
-      suspended: false,
-      reminders: [],
-      createdAt: new Date().toISOString(),
-    };
-    setInvoices((prev) => [invoice, ...prev]);
-  }, []);
-
-  const addManyInvoices = useCallback((inputs: NewInvoiceInput[]) => {
-    const now = new Date().toISOString();
-    const newInvoices: Invoice[] = inputs.map((input) => ({
-      ...input,
-      id: uid(),
-      paidAt: null,
-      suspended: false,
-      reminders: [],
-      createdAt: now,
-    }));
-    setInvoices((prev) => [...newInvoices, ...prev]);
-  }, []);
-
-  const updateInvoice = useCallback((id: string, patch: Partial<Invoice>) => {
-    setInvoices((prev) =>
-      prev.map((inv) => (inv.id === id ? { ...inv, ...patch } : inv)),
+    const reminders = (remRows ?? []) as ReminderRow[];
+    setInvoices(
+      ((invRows ?? []) as InvoiceRow[]).map((r) => rowToInvoice(r, reminders)),
     );
-  }, []);
+    setLoaded(true);
+  }, [user]);
 
-  const deleteInvoice = useCallback((id: string) => {
+  useEffect(() => {
+    if (authLoading) return;
+    setLoaded(false);
+    reload();
+  }, [authLoading, reload]);
+
+  const addInvoice = useCallback(
+    async (input: NewInvoiceInput) => {
+      if (!user) return;
+      const { data, error } = await getSupabaseClient()
+        .from("invoices")
+        .insert(inputToRow(input, user.id))
+        .select()
+        .single();
+      if (error || !data) return;
+      setInvoices((prev) => [rowToInvoice(data as InvoiceRow, []), ...prev]);
+    },
+    [user],
+  );
+
+  const addManyInvoices = useCallback(
+    async (inputs: NewInvoiceInput[]) => {
+      if (!user || inputs.length === 0) return;
+      const rows = inputs.map((i) => inputToRow(i, user.id));
+      const { data, error } = await getSupabaseClient()
+        .from("invoices")
+        .insert(rows)
+        .select();
+      if (error || !data) return;
+      const mapped = (data as InvoiceRow[]).map((r) => rowToInvoice(r, []));
+      setInvoices((prev) => [...mapped, ...prev]);
+    },
+    [user],
+  );
+
+  const updateInvoice = useCallback(
+    async (id: string, patch: Partial<Invoice>) => {
+      setInvoices((prev) =>
+        prev.map((inv) => (inv.id === id ? { ...inv, ...patch } : inv)),
+      );
+      await getSupabaseClient()
+        .from("invoices")
+        .update(patchToRow(patch))
+        .eq("id", id);
+    },
+    [],
+  );
+
+  const deleteInvoice = useCallback(async (id: string) => {
     setInvoices((prev) => prev.filter((inv) => inv.id !== id));
+    await getSupabaseClient().from("invoices").delete().eq("id", id);
   }, []);
 
-  // Stop automatico: segnare pagata azzera i solleciti futuri.
-  const markPaid = useCallback((id: string) => {
+  const markPaid = useCallback(async (id: string) => {
+    const paidAt = new Date().toISOString();
     setInvoices((prev) =>
       prev.map((inv) =>
-        inv.id === id
-          ? { ...inv, paidAt: new Date().toISOString(), suspended: false }
-          : inv,
+        inv.id === id ? { ...inv, paidAt, suspended: false } : inv,
       ),
     );
+    await getSupabaseClient()
+      .from("invoices")
+      .update({ paid_at: paidAt, suspended: false })
+      .eq("id", id);
   }, []);
 
-  const markUnpaid = useCallback((id: string) => {
+  const markUnpaid = useCallback(async (id: string) => {
     setInvoices((prev) =>
       prev.map((inv) => (inv.id === id ? { ...inv, paidAt: null } : inv)),
     );
+    await getSupabaseClient()
+      .from("invoices")
+      .update({ paid_at: null })
+      .eq("id", id);
   }, []);
 
-  const toggleSuspend = useCallback((id: string) => {
-    setInvoices((prev) =>
-      prev.map((inv) =>
-        inv.id === id ? { ...inv, suspended: !inv.suspended } : inv,
-      ),
-    );
-  }, []);
+  const toggleSuspend = useCallback(
+    async (id: string) => {
+      const current = invoices.find((i) => i.id === id);
+      if (!current) return;
+      const next = !current.suspended;
+      setInvoices((prev) =>
+        prev.map((inv) => (inv.id === id ? { ...inv, suspended: next } : inv)),
+      );
+      await getSupabaseClient()
+        .from("invoices")
+        .update({ suspended: next })
+        .eq("id", id);
+    },
+    [invoices],
+  );
 
-  const sendStep = useCallback((id: string, stepKey: string) => {
-    const step = REMINDER_LADDER.find((s) => s.key === stepKey);
-    if (!step) return;
-    const now = new Date().toISOString();
-    const logs: ReminderLog[] = step.channels.map((channel) => ({
-      id: uid(),
-      stepKey: step.key,
-      channel,
-      sentAt: now,
-    }));
-    setInvoices((prev) =>
-      prev.map((inv) =>
-        inv.id === id
-          ? { ...inv, reminders: [...inv.reminders, ...logs] }
-          : inv,
-      ),
-    );
-  }, []);
+  const sendStep = useCallback(
+    async (id: string, stepKey: string) => {
+      if (!user) return;
+      const step = REMINDER_LADDER.find((s) => s.key === stepKey);
+      if (!step) return;
+      const rows = step.channels.map((channel) => ({
+        invoice_id: id,
+        user_id: user.id,
+        step_key: step.key,
+        channel,
+      }));
+      const { data, error } = await getSupabaseClient()
+        .from("reminders")
+        .insert(rows)
+        .select();
+      if (error || !data) return;
+      const logs = (data as ReminderRow[]).map(reminderRowToLog);
+      setInvoices((prev) =>
+        prev.map((inv) =>
+          inv.id === id
+            ? { ...inv, reminders: [...inv.reminders, ...logs] }
+            : inv,
+        ),
+      );
+    },
+    [user],
+  );
 
-  const resetDemoData = useCallback(() => {
-    setInvoices(SAMPLE_INVOICES);
-  }, []);
+  const resetDemoData = useCallback(async () => {
+    if (!user) return;
+    const supabase = getSupabaseClient();
+    await supabase.from("invoices").delete().eq("user_id", user.id);
+    const rows = SAMPLE_INVOICES.map((s) => inputToRow(s, user.id));
+    const { data } = await supabase.from("invoices").insert(rows).select();
+    setInvoices(((data ?? []) as InvoiceRow[]).map((r) => rowToInvoice(r, [])));
+  }, [user]);
 
   const value = useMemo<InvoicesContextValue>(
     () => ({

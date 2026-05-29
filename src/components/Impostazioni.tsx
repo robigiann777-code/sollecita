@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSettings } from "@/lib/settings";
+import { useRequireAuth } from "@/lib/auth";
 import { PLACEHOLDERS } from "@/lib/templates";
 import { REMINDER_LADDER } from "@/lib/reminders";
 import type { CompanyProfile } from "@/lib/types";
@@ -26,10 +27,19 @@ export function Impostazioni() {
     resetTemplates,
   } = useSettings();
   const [saved, setSaved] = useState(false);
+  const { user, loading: authLoading } = useRequireAuth();
 
   function flashSaved() {
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
+  }
+
+  if (authLoading || !user) {
+    return (
+      <div className="flex flex-1 items-center justify-center py-20 text-slate-400">
+        Caricamento…
+      </div>
+    );
   }
 
   return (

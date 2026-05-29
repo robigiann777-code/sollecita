@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useInvoices } from "@/lib/store";
 import { useSettings } from "@/lib/settings";
+import { useRequireAuth } from "@/lib/auth";
 import { aggregateClients, RISK_LABEL, type ClientStats } from "@/lib/clients";
 import { computeStatus } from "@/lib/reminders";
 import { formatDate, formatEuro } from "@/lib/format";
@@ -104,6 +105,7 @@ function printStatement(client: ClientStats, company: CompanyProfile) {
 }
 
 export function Clienti() {
+  const { user, loading: authLoading } = useRequireAuth();
   const { invoices, loaded } = useInvoices();
   const { company } = useSettings();
   const [search, setSearch] = useState("");
@@ -114,6 +116,14 @@ export function Clienti() {
     if (!q) return clients;
     return clients.filter((c) => c.name.toLowerCase().includes(q));
   }, [clients, search]);
+
+  if (authLoading || !user) {
+    return (
+      <div className="flex flex-1 items-center justify-center py-20 text-slate-400">
+        Caricamento…
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8">

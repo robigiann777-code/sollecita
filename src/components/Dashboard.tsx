@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useInvoices } from "@/lib/store";
+import { useAuth, useRequireAuth } from "@/lib/auth";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
 import { computeStatus, getNextDueStep } from "@/lib/reminders";
 import { formatDate, formatEuro } from "@/lib/format";
@@ -23,6 +24,8 @@ const FILTERS: { key: Filter; label: string }[] = [
 ];
 
 export function Dashboard() {
+  const { user, loading: authLoading } = useRequireAuth();
+  const { signOut } = useAuth();
   const { invoices, loaded, resetDemoData } = useInvoices();
   const [filter, setFilter] = useState<Filter>("tutte");
   const [search, setSearch] = useState("");
@@ -50,6 +53,14 @@ export function Dashboard() {
       return matchFilter && matchSearch;
     });
   }, [invoices, filter, search]);
+
+  if (authLoading || !user) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-slate-400">
+        Caricamento…
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col">
@@ -94,6 +105,13 @@ export function Dashboard() {
             >
               Prezzi
             </Link>
+            <button
+              onClick={() => signOut()}
+              title={user.email ?? undefined}
+              className="hidden rounded-lg px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100 sm:inline-block"
+            >
+              Esci
+            </button>
             <button
               onClick={() => setImportOpen(true)}
               className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"

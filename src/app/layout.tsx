@@ -3,6 +3,7 @@ import { Poppins } from "next/font/google";
 import "./globals.css";
 import { InvoicesProvider } from "@/lib/store";
 import { SettingsProvider } from "@/lib/settings";
+import { AuthProvider } from "@/lib/auth";
 
 const poppins = Poppins({
   variable: "--font-poppins",
@@ -24,9 +25,11 @@ export default function RootLayout({
   return (
     <html lang="it" className={`${poppins.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-slate-50 text-slate-900">
-        <SettingsProvider>
-          <InvoicesProvider>{children}</InvoicesProvider>
-        </SettingsProvider>
+        <AuthProvider>
+          <SettingsProvider>
+            <InvoicesProvider>{children}</InvoicesProvider>
+          </SettingsProvider>
+        </AuthProvider>
       </body>
     </html>
   );

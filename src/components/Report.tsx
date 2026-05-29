@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { useInvoices } from "@/lib/store";
+import { useRequireAuth } from "@/lib/auth";
 import { computeStatus } from "@/lib/reminders";
 import { formatEuro, daysBetween } from "@/lib/format";
 
@@ -24,6 +25,7 @@ function Kpi({
 }
 
 export function Report() {
+  const { user, loading: authLoading } = useRequireAuth();
   const { invoices, loaded } = useInvoices();
 
   const stats = useMemo(() => {
@@ -89,6 +91,14 @@ export function Report() {
       aging,
     };
   }, [invoices]);
+
+  if (authLoading || !user) {
+    return (
+      <div className="flex flex-1 items-center justify-center py-20 text-slate-400">
+        Caricamento…
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-8">
