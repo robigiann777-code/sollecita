@@ -88,6 +88,12 @@ export function Dashboard() {
               Clienti
             </Link>
             <Link
+              href="/verifica"
+              className="hidden rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 sm:inline-block"
+            >
+              Verifica P.IVA
+            </Link>
+            <Link
               href="/report"
               className="hidden rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 sm:inline-block"
             >
