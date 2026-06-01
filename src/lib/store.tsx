@@ -47,6 +47,7 @@ interface InvoiceRow {
   client_name: string;
   client_email: string;
   client_phone: string | null;
+  client_vat: string | null;
   number: string;
   amount: number | string;
   issue_date: string;
@@ -82,6 +83,7 @@ function rowToInvoice(row: InvoiceRow, reminders: ReminderRow[]): Invoice {
     clientName: row.client_name,
     clientEmail: row.client_email ?? "",
     clientPhone: row.client_phone ?? undefined,
+    clientVat: row.client_vat ?? undefined,
     number: row.number,
     amount: Number(row.amount),
     issueDate: row.issue_date,
@@ -103,6 +105,7 @@ function inputToRow(input: NewInvoiceInput, userId: string) {
     client_name: input.clientName,
     client_email: input.clientEmail ?? "",
     client_phone: input.clientPhone ?? null,
+    client_vat: input.clientVat ?? null,
     number: input.number,
     amount: input.amount,
     issue_date: input.issueDate,
@@ -116,6 +119,7 @@ function patchToRow(patch: Partial<Invoice>): Record<string, unknown> {
   if (patch.clientName !== undefined) row.client_name = patch.clientName;
   if (patch.clientEmail !== undefined) row.client_email = patch.clientEmail;
   if (patch.clientPhone !== undefined) row.client_phone = patch.clientPhone ?? null;
+  if (patch.clientVat !== undefined) row.client_vat = patch.clientVat ?? null;
   if (patch.number !== undefined) row.number = patch.number;
   if (patch.amount !== undefined) row.amount = patch.amount;
   if (patch.issueDate !== undefined) row.issue_date = patch.issueDate;

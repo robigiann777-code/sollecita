@@ -27,6 +27,7 @@ export interface Invoice {
   clientName: string;
   clientEmail: string;
   clientPhone?: string;
+  clientVat?: string; // Partita IVA del cliente (facoltativa)
   number: string;
   amount: number; // in euro
   issueDate: string; // ISO date (yyyy-mm-dd)

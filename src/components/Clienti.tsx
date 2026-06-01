@@ -161,7 +161,7 @@ export function Clienti() {
                   <th className="px-4 py-3 text-right">Scaduto</th>
                   <th className="hidden px-4 py-3 text-center md:table-cell">Fatture</th>
                   <th className="hidden px-4 py-3 text-center md:table-cell">Tempo medio</th>
-                  <th className="px-4 py-3 text-right">Estratto conto</th>
+                  <th className="px-4 py-3 text-right">Azioni</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -170,6 +170,9 @@ export function Clienti() {
                     <td className="px-4 py-3">
                       <div className="font-semibold text-slate-900">{c.name}</div>
                       <div className="text-xs text-slate-400">{c.email || "—"}</div>
+                      {c.vat && (
+                        <div className="text-xs text-slate-400">P.IVA {c.vat}</div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -192,13 +195,23 @@ export function Clienti() {
                     <td className="hidden px-4 py-3 text-center text-slate-500 md:table-cell">
                       {c.avgDaysToPay !== null ? `${c.avgDaysToPay} gg` : "—"}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => printStatement(c, company)}
-                        className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                      >
-                        Stampa / PDF
-                      </button>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-2">
+                        <Link
+                          href={`/verifica${
+                            c.vat ? `?vat=${encodeURIComponent(c.vat)}` : ""
+                          }`}
+                          className="rounded-lg border border-brand px-3 py-1.5 text-xs font-semibold text-brand hover:bg-blue-50"
+                        >
+                          Verifica P.IVA
+                        </Link>
+                        <button
+                          onClick={() => printStatement(c, company)}
+                          className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                        >
+                          Stampa / PDF
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

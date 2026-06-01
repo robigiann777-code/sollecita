@@ -28,6 +28,9 @@ export function AddInvoiceDialog({
   const [clientName, setClientName] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [clientPhone, setClientPhone] = useState("");
+  const [clientVat, setClientVat] = useState("");
+  const [vatChecking, setVatChecking] = useState(false);
+  const [vatMsg, setVatMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [number, setNumber] = useState("");
   const [amount, setAmount] = useState("");
   const [issueDate, setIssueDate] = useState(todayISO());
@@ -41,12 +44,50 @@ export function AddInvoiceDialog({
     setClientName("");
     setClientEmail("");
     setClientPhone("");
+    setClientVat("");
+    setVatMsg(null);
     setNumber("");
     setAmount("");
     setIssueDate(todayISO());
     setDueDate(plusDaysISO(30));
     setNotes("");
     setError("");
+  }
+
+  async function verificaVat() {
+    const v = clientVat.trim();
+    if (!v) return;
+    setVatChecking(true);
+    setVatMsg(null);
+    try {
+      const res = await fetch("/api/verifica-piva", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vat: v }),
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        valid?: boolean;
+        name?: string | null;
+        message?: string;
+      };
+      if (data.ok && data.valid) {
+        setVatMsg({
+          ok: true,
+          text: data.name ? `Valida — ${data.name}` : "Partita IVA valida e attiva",
+        });
+        // Se la ragione sociale arriva e il nome è vuoto, lo compiliamo.
+        if (data.name && !clientName.trim()) setClientName(data.name);
+      } else if (data.ok && !data.valid) {
+        setVatMsg({ ok: false, text: "Partita IVA non valida o non attiva." });
+      } else {
+        setVatMsg({ ok: false, text: data.message || "Verifica non riuscita." });
+      }
+    } catch {
+      setVatMsg({ ok: false, text: "Errore di rete durante la verifica." });
+    } finally {
+      setVatChecking(false);
+    }
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -62,6 +103,7 @@ export function AddInvoiceDialog({
       clientName: clientName.trim(),
       clientEmail: clientEmail.trim(),
       clientPhone: clientPhone.trim() || undefined,
+      clientVat: clientVat.trim() || undefined,
       number: number.trim(),
       amount: parsedAmount,
       issueDate,
@@ -120,6 +162,38 @@ export function AddInvoiceDialog({
                 placeholder="+39 ..."
               />
             </div>
+          </div>
+          <div>
+            <label className={labelClass}>Partita IVA cliente (facoltativa)</label>
+            <div className="flex gap-2">
+              <input
+                className={inputClass}
+                value={clientVat}
+                onChange={(e) => {
+                  setClientVat(e.target.value);
+                  setVatMsg(null);
+                }}
+                placeholder="Es. 12485671007"
+                inputMode="numeric"
+              />
+              <button
+                type="button"
+                onClick={verificaVat}
+                disabled={vatChecking || !clientVat.trim()}
+                className="shrink-0 rounded-lg border border-brand px-3 py-2 text-sm font-semibold text-brand hover:bg-blue-50 disabled:opacity-50"
+              >
+                {vatChecking ? "..." : "Verifica"}
+              </button>
+            </div>
+            {vatMsg && (
+              <p
+                className={`mt-1 text-xs font-semibold ${
+                  vatMsg.ok ? "text-emerald-700" : "text-red-600"
+                }`}
+              >
+                {vatMsg.text}
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>

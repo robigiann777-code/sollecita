@@ -8,6 +8,7 @@ export interface ClientStats {
   name: string;
   email: string;
   phone?: string;
+  vat?: string; // Partita IVA (presa dalla prima fattura che ce l'ha)
   invoices: Invoice[];
   totalCount: number;
   paidCount: number;
@@ -51,12 +52,14 @@ export function aggregateClients(
     let maxDaysLate = 0;
     let email = "";
     let phone: string | undefined;
+    let vat: string | undefined;
 
     for (const inv of list) {
       totalAmount += inv.amount;
       remindersSent += inv.reminders.length;
       if (!email && inv.clientEmail) email = inv.clientEmail;
       if (!phone && inv.clientPhone) phone = inv.clientPhone;
+      if (!vat && inv.clientVat) vat = inv.clientVat;
 
       const status = computeStatus(inv, today);
       if (status === "pagata") {
@@ -96,6 +99,7 @@ export function aggregateClients(
       name,
       email,
       phone,
+      vat,
       invoices: list,
       totalCount: list.length,
       paidCount,
